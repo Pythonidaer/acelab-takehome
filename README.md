@@ -127,6 +127,8 @@ uv sync
 uv run examples/basic_usage.py   # optional: sanity-check Acelab connectivity
 uv run material-agent "High-traffic hospital corridor, infection control, LEED Silver, calming aesthetic, mid-range budget."
 uv run material-agent --trace "…"   # log each SDK tool call on stderr; JSON still on stdout
+# Deduplication + recommendations (uses `deduplicate_product` + `search_products`; IDs stay search-grounded):
+uv run material-agent --trace "Check whether a product like 'Quartz Countertop - White' from Caesarstone may already exist in the catalog, then recommend similar quartz surfaces for a healthcare reception desk that needs durability, cleanability, and a bright neutral aesthetic."
 # or: uv run python -m material_agent <<< "your multi-line brief"
 ```
 
@@ -135,7 +137,7 @@ The CLI prints a JSON report: executive summary, constraints, search strategy, r
 ### Approach
 
 - **Orchestration:** OpenRouter chat completions with **function calling**; the model plans multiple **narrow** SDK queries instead of one broad product search.
-- **Tools (real `AsyncAcelab` calls):** `search_products`, `search_materials`, `search_certifications`, `search_companies`, and `classify_taxonomy` — each wraps the vendored SDK with typed responses serialized back to the model.
+- **Tools (real `AsyncAcelab` calls):** `search_products`, `search_materials`, `search_certifications`, `search_companies`, `classify_taxonomy`, and `deduplicate_product` (catalog duplicate check — evidence only; ranking IDs still come from `search_products`).
 - **Output:** Structured JSON (`pydantic`-validated). Each `product_id` in `recommendations` must appear in a
   `search_products` response in the same run; otherwise the agent gets an automatic **grounding repair** turn.
 - **`--trace`:** Logs each tool call to stderr for debugging.

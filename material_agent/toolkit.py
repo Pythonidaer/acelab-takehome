@@ -99,6 +99,34 @@ TOOL_SPECS: list[dict[str, Any]] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "deduplicate_product",
+            "description": (
+                "Check whether a specific named product may already exist in the catalog (near-duplicates / similar "
+                "matches). Use when the user asks about duplicates, exact product matching, or whether something "
+                "'already exists'. Results are supporting evidence only — not a substitute for product search."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Manufacturer product name as the user described it."},
+                    "supplier": {
+                        "type": "string",
+                        "description": "Supplier or brand name if known; omit if unknown.",
+                    },
+                    "description": {"type": "string", "description": "Optional product description for better matching."},
+                    "attributes": {
+                        "type": "object",
+                        "description": 'Optional key/value attributes (string values), e.g. {"material": "quartz"}.',
+                        "additionalProperties": {"type": "string"},
+                    },
+                },
+                "required": ["name"],
+            },
+        },
+    },
 ]
 
 
@@ -178,6 +206,34 @@ async def dispatch_tool(
             "matched_taxonomy": matched,
             "top_candidates": candidates,
             "query_input": r.query_input,
+        }
+
+    if name == "deduplicate_product":
+        product_name = args["name"]
+        supplier = str(args.get("supplier") or "")
+        description = args.get("description")
+        if description is not None:
+            description = str(description)
+        attrs_raw = args.get("attributes")
+        attributes: dict[str, str] | None = None
+        if attrs_raw is not None:
+            if not isinstance(attrs_raw, dict):
+                return {"error": "deduplicate_product.attributes must be an object"}
+            attributes = {str(k): str(v) for k, v in attrs_raw.items()}
+        r = await acelab.deduplicate(
+            name=product_name,
+            supplier=supplier,
+            description=description,
+            attributes=attributes,
+        )
+        return {
+            "query": {
+                "name": product_name,
+                "supplier": supplier if supplier else None,
+                "description": description,
+                "attributes": attributes,
+            },
+            "candidates": [c.model_dump() for c in r.candidates],
         }
 
     return {"error": f"unknown_tool:{name}"}

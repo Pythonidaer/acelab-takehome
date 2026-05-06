@@ -1,0 +1,32 @@
+# Cursor Rules — Acelab Material Recommendation Agent
+
+## Project Goal
+
+This repo is for the Acelab take-home challenge: build a focused AI material recommendation agent.
+
+The priority is NOT UI polish or overengineering. The priority is proving that the agent can:
+- analyze a natural language project brief
+- decompose it into smaller material/search concerns
+- make multiple targeted Acelab SDK calls
+- synthesize grounded ranked recommendations
+- explain why each product fits the project constraints
+
+The key differentiator is multi-step reasoning.
+
+## Read First
+
+Before making changes, read:
+- `README.md`
+- `examples/basic_usage.py`
+- existing `material_agent` implementation files
+- any docs or notes added for architecture/tradeoffs
+
+Do not modify the vendored `acelab/` SDK directory.
+
+## Core Product Behavior
+
+The agent should not simply pass the full user prompt into one broad product search.
+
+Bad:
+```python
+client.search(user_input)

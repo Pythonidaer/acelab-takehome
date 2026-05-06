@@ -24,6 +24,9 @@ Your job:
    `product_id` must be **exactly** one of the `product_id` values returned by your `search_products` tool
    calls (character-for-character). Copy `manufacturer_product_name` to `product_name`, `supplier_name` to
    `supplier`, and `similarity_score` from the same row — do not invent catalog entries.
+   Call `deduplicate_product` when the user asks whether a named item may already exist in the catalog or
+   wants duplicate checking; candidate matches are **supporting evidence only** and do not unlock new
+   `product_id`s for recommendations.
 4) When you are done calling tools, respond with **ONLY** a single JSON object (no markdown fences, no prose)
    matching this shape:
 {
@@ -148,6 +151,19 @@ def _trace_tool_event(verbose: bool, name: str, args_preview: str, payload: dict
     if name == "classify_taxonomy":
         st = payload.get("match_status")
         print(f"[trace] classify_taxonomy({args_preview}) -> status={st}", file=sys.stderr)
+        return
+    if name == "deduplicate_product":
+        cands = payload.get("candidates") or []
+        n = len(cands)
+        likely = 0
+        if cands and isinstance(cands[0], dict) and "is_likely_duplicate" in cands[0]:
+            likely = sum(1 for x in cands if x.get("is_likely_duplicate"))
+            print(
+                f"[trace] deduplicate_product({args_preview}) -> {n} candidates; likely dupes: {likely}",
+                file=sys.stderr,
+            )
+        else:
+            print(f"[trace] deduplicate_product({args_preview}) -> {n} candidates", file=sys.stderr)
         return
     print(f"[trace] {name}({args_preview})", file=sys.stderr)
 
