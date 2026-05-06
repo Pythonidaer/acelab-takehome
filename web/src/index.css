@@ -2,6 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  ::selection {
+    @apply bg-ink/10 text-ink;
+  }
+}
+
 body {
   margin: 0;
 }

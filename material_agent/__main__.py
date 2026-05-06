@@ -6,6 +6,7 @@ import json
 import sys
 
 from .agent import run_agent
+from .cli_report import format_report_basic_usage_style
 
 
 def main() -> None:
@@ -20,7 +21,12 @@ def main() -> None:
     parser.add_argument(
         "--trace",
         action="store_true",
-        help="Log each Acelab tool call to stderr (JSON still goes to stdout).",
+        help="Log each Acelab tool call to stderr (report still goes to stdout).",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit structured JSON on stdout (default: human-readable report, similar to examples/basic_usage.py).",
     )
     ns = parser.parse_args()
     text = ns.prompt
@@ -29,7 +35,10 @@ def main() -> None:
     if not text:
         parser.error("Provide a prompt argument or pipe text on stdin.")
     report = asyncio.run(run_agent(text, verbose=ns.trace))
-    print(json.dumps(report.model_dump(), indent=2))
+    if ns.json:
+        print(json.dumps(report.model_dump(), indent=2))
+    else:
+        print(format_report_basic_usage_style(report), end="")
 
 
 if __name__ == "__main__":

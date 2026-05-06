@@ -26,7 +26,7 @@
 
 An LLM-orchestrated assistant that reads a natural-language **architectural or interior** project brief and returns **ranked product recommendations with reasoning**, using the vendored **Acelab Python SDK** (real API calls, no mocks) and **OpenRouter** for chat + **function calling**. The agent plans **multiple targeted SDK lookups**—products, materials, certifications, manufacturers, taxonomy, and optional duplicate checks—rather than stuffing the entire brief into a single catalog search.
 
-Each run returns **validated JSON** (Pydantic): executive summary, constraints, search narrative, ranked rows with `reasoning`, and **caveats**. Recommended **`product_id` values must come from `search_products` hits in that same run**; if the model invents or miscopies IDs, a **grounding repair** loop injects feedback and retries (`material_agent/agent.py`). A **domain heuristic** rejects clearly off-topic prompts before any OpenRouter or Acelab work (`material_agent/domain_guard.py`).
+Each run is **validated with Pydantic** (`AgentReport`). By default the **CLI** prints a **human-readable report** with the same kind of **product line layout** as `examples/basic_usage.py` (`Supplier:` / `Score:` / blank-line rhythm)—but the **sections are the agent’s final narrative** (summary, strategy, ranked picks), not the script’s six sequential SDK demos. Use **`--json`** for structured output on stdout. Recommended **`product_id` values** must come from `search_products` hits in that run; if the model invents or miscopies IDs, a **grounding repair** loop injects feedback and retries (`material_agent/agent.py`). A **domain heuristic** rejects clearly off-topic prompts before any OpenRouter or Acelab work (`material_agent/domain_guard.py`).
 
 **Interfaces:** **`material-agent` CLI** (primary), optional **React + Vite** UI with **FastAPI SSE** (`material_agent/server.py`, `web/`).
 
@@ -56,7 +56,7 @@ uv sync --extra dev --extra web
 1. Configure `.env` as above (`OPENROUTER_MODEL` defaults to `openai/gpt-4o-mini` on OpenRouter unless set).
 2. *(Optional)* Check Acelab connectivity:  
    `uv run python examples/basic_usage.py`
-3. Run the agent (JSON on **stdout**):  
+3. Run the agent (human-readable report on **stdout**; layout inspired by `examples/basic_usage.py` product lines—see [CLI reference](#cli-reference); use `--json` for JSON):  
    `uv run material-agent "High-traffic hospital corridor, infection control, LEED Silver, calming aesthetic, mid-range budget."`
 4. Inspect tool/SDK activity (**stderr**):  
    `uv run material-agent --trace "your brief"`
@@ -77,12 +77,24 @@ Open [http://localhost:5173](http://localhost:5173). The Vite dev server proxies
 
 ## CLI reference
 
+### `material-agent` vs `examples/basic_usage.py`
+
+| | `examples/basic_usage.py` | `uv run material-agent` |
+|---|---|---|
+| **Purpose** | Walk through **every** SDK method with **fixed sample queries** (products, materials, certs, companies, taxonomy, dedup). | Run the **deliverable agent**: multi-step tool orchestration + **synthesized report** for **your** brief. |
+| **Stdout** | Raw endpoint results in six blocks. | **Executive summary**, constraints, **search strategy** narrative, **ranked recommendations**, caveats (text by default; `--json` for `AgentReport` JSON). |
+| **Look & feel** | Section titles like `Found N products for:`, `Materials matching:` … | Same **indentation habit** for each product row (`Supplier`, `Score`, etc.); prose sections are **hard-wrapped** to a stable width so narrow terminals do not fragment lines like mid-wrap duplicates. |
+
+Use `basic_usage` to prove API credentials; use `material-agent` to exercise the take-home agent.
+
 Environment variables load via `python-dotenv` in `material_agent/config.py`.
 
 ```bash
 uv run python examples/basic_usage.py
 
 uv run material-agent "Single-line brief."
+# JSON (scripts / piping): --json
+uv run material-agent --json "Single-line brief."
 
 uv run material-agent --trace "…"
 

@@ -61,9 +61,12 @@ async function streamRecommendation(
   }
 }
 
-function Mark() {
+function Mark({ className = "" }: { className?: string }) {
   return (
-    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded border border-ink/15 bg-ink text-[11px] font-serif font-medium tracking-tight text-cream">
+    <div
+      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-[6px] bg-ink font-sans text-[15px] font-semibold leading-none tracking-tight text-cream shadow-sm ${className}`}
+      aria-hidden
+    >
       M
     </div>
   );
@@ -144,20 +147,20 @@ export default function App() {
 
   return (
     <div className="flex min-h-dvh flex-col overflow-y-auto bg-cream text-ink md:h-dvh md:max-h-dvh md:overflow-hidden">
-      <header className="shrink-0 border-b border-ink/10 bg-cream px-6 py-5 sm:px-10">
-        <div className="mx-auto flex max-w-[1400px] flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex gap-4">
-            <Mark />
-            <div>
-              <h1 className="font-serif text-2xl tracking-tight text-ink sm:text-[1.75rem]">
+      <header className="shrink-0 border-b border-ink/[0.06] bg-cream/95 px-6 py-6 backdrop-blur-sm sm:px-10 sm:py-7 md:px-12">
+        <div className="mx-auto flex max-w-[1400px] flex-col gap-5 sm:flex-row sm:items-center sm:justify-between sm:gap-8">
+          <div className="flex min-w-0 items-center gap-4 sm:gap-5">
+            <Mark className="!h-10 !w-10 !text-[1rem]" />
+            <div className="min-w-0">
+              <h1 className="font-serif text-[1.65rem] font-normal leading-[1.12] tracking-[-0.02em] text-ink sm:text-[1.85rem]">
                 Material Recommendation Agent
               </h1>
-              <p className="mt-1 max-w-xl font-sans text-sm font-normal leading-relaxed text-subtle">
+              <p className="mt-1 max-w-[28rem] font-sans text-[13px] font-normal leading-snug text-subtle/90">
                 AI-assisted architectural material search and recommendation system.
               </p>
             </div>
           </div>
-          <p className="font-sans text-[10px] font-medium uppercase tracking-[0.2em] text-subtle">
+          <p className="shrink-0 font-sans text-[10px] font-medium uppercase tracking-[0.22em] text-subtle/80 sm:pt-0.5">
             Acelab SDK · Demo
           </p>
         </div>
@@ -166,10 +169,10 @@ export default function App() {
       <div className="mx-auto flex min-h-0 w-full max-w-[1400px] flex-1 flex-col md:flex-row md:overflow-hidden">
         {/* Left: input workspace — solid, bordered column; scrolls only if needed */}
         <aside
-          className="flex w-full shrink-0 flex-col overflow-y-auto border-ink/10 bg-cream px-6 py-6 md:min-h-0 md:w-[380px] md:border-r md:py-8 sm:px-8"
+          className="flex w-full shrink-0 flex-col overflow-y-auto border-ink/[0.05] bg-cream px-6 py-7 md:min-h-0 md:w-[392px] md:border-r md:py-9 sm:px-8"
           aria-label="Project input"
         >
-          <div className="rounded-xl border border-ink/10 bg-white p-6 shadow-sm">
+          <div className="rounded-2xl border border-ink/[0.07] bg-white p-6 shadow-[0_1px_3px_rgba(26,24,22,0.05)] sm:p-7">
             <label className="block font-sans text-[10px] font-medium uppercase tracking-[0.18em] text-subtle">
               Project brief
             </label>
@@ -178,7 +181,7 @@ export default function App() {
               onChange={(e) => setBrief(e.target.value)}
               rows={8}
               disabled={loading}
-              className="mt-3 w-full resize-y rounded-lg border border-ink/10 bg-white px-4 py-3 font-sans text-sm leading-relaxed text-ink outline-none ring-0 placeholder:text-subtle focus:border-ink/25 focus:ring-1 focus:ring-ink/10"
+              className="mt-3 w-full resize-y rounded-[10px] border border-ink/[0.09] bg-white px-4 py-3 font-sans text-sm leading-relaxed text-ink outline-none ring-0 placeholder:text-subtle/70 focus:border-ink/20 focus:ring-2 focus:ring-ink/5"
               placeholder="Describe the space, performance needs, certifications, and aesthetic…"
             />
 
@@ -192,7 +195,7 @@ export default function App() {
                   type="button"
                   disabled={loading}
                   onClick={() => setBrief(ex.text)}
-                  className="rounded-full border border-ink/10 bg-cream-deep px-3 py-1.5 font-sans text-xs text-ink transition hover:border-ink/20 hover:bg-[#dfd9cc] disabled:opacity-50"
+                  className="rounded-full border border-ink/[0.08] bg-white px-3 py-1.5 font-sans text-xs text-ink shadow-sm transition hover:border-ink/15 hover:bg-cream-deep disabled:opacity-50"
                 >
                   {ex.label}
                 </button>
@@ -214,7 +217,7 @@ export default function App() {
               type="button"
               disabled={loading || !brief.trim()}
               onClick={() => void run()}
-              className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl border border-ink/10 bg-cream-deep px-4 py-3.5 font-sans text-sm font-medium text-ink transition hover:bg-[#dfd9cc] disabled:cursor-not-allowed disabled:opacity-45"
+              className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl border border-ink/10 bg-cream-deep px-4 py-3.5 font-sans text-sm font-medium text-ink transition hover:border-ink/15 hover:bg-[#dfd9cc] disabled:cursor-not-allowed disabled:opacity-45"
             >
               {loading ? "Generating…" : "Generate recommendations"}
               {!loading && <span aria-hidden>→</span>}
@@ -224,16 +227,14 @@ export default function App() {
 
         {/* Right: results workspace — own scroll, solid ground */}
         <main
-          className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-cream px-6 py-6 md:py-8 sm:px-8"
+          className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-cream px-6 py-7 md:py-9 sm:px-10"
           aria-label="Recommendations"
         >
           <div className="mx-auto max-w-3xl">
             {!loading && !hasResults && !error && (
-              <div className="flex min-h-[320px] flex-col items-center justify-center rounded-xl border border-dashed border-ink/15 bg-white px-8 py-16 text-center md:min-h-[420px]">
-                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full border border-ink/10 bg-cream font-serif text-sm text-ink">
-                  M
-                </div>
-                <h2 className="font-serif text-xl text-ink">Awaiting your brief</h2>
+              <div className="flex min-h-[320px] flex-col items-center justify-center rounded-2xl border border-dashed border-ink/[0.1] bg-white px-8 py-16 text-center shadow-[inset_0_1px_0_rgba(26,24,22,0.03)] md:min-h-[420px]">
+                <Mark className="!mb-5 !h-12 !w-12 !rounded-lg !text-lg" />
+                <h2 className="font-serif text-xl font-normal tracking-[-0.02em] text-ink">Awaiting your brief</h2>
                 <p className="mt-3 max-w-md font-sans text-sm leading-relaxed text-subtle">
                   Describe your project on the left. The agent will decompose it into focused Acelab SDK calls
                   and return grounded material recommendations.
@@ -242,7 +243,7 @@ export default function App() {
             )}
 
             {loading && (
-              <div className="space-y-5 rounded-xl border border-ink/10 bg-white p-6 shadow-sm">
+              <div className="space-y-5 rounded-2xl border border-ink/[0.07] bg-white p-6 shadow-[0_1px_3px_rgba(26,24,22,0.05)] sm:p-7">
                 <div className="space-y-3">
                   <div className="h-4 w-1/3 rounded bg-ink/[0.08]" />
                   <div className="h-3 w-full rounded bg-ink/[0.06]" />
@@ -257,16 +258,16 @@ export default function App() {
             )}
 
             {error && (
-              <div className="rounded-xl border border-red-200 bg-red-50 p-6">
-                <p className="font-sans text-sm font-medium text-red-900">Something went wrong</p>
-                <p className="mt-2 font-mono text-xs text-red-900">{error}</p>
+              <div className="rounded-2xl border border-red-200/80 bg-red-50/90 px-6 py-5 shadow-[0_1px_2px_rgba(26,24,22,0.04)]">
+                <p className="font-sans text-sm font-medium text-red-950">Something went wrong</p>
+                <p className="mt-2 font-mono text-xs leading-relaxed text-red-900/90">{error}</p>
               </div>
             )}
 
             {hasResults && report && (
               <div className="space-y-6 pb-6">
-                <div className="rounded-xl border border-ink/10 bg-white p-6 shadow-sm sm:p-7">
-                  <h2 className="font-serif text-lg text-ink">Summary</h2>
+                <div className="rounded-2xl border border-ink/[0.07] bg-white p-6 shadow-[0_1px_3px_rgba(26,24,22,0.05)] sm:p-7">
+                  <h2 className="font-serif text-lg font-normal tracking-[-0.02em] text-ink">Summary</h2>
                   <p className="mt-2.5 font-sans text-sm leading-relaxed text-subtle">{report.executive_summary}</p>
 
                   <StrategyBlock
@@ -275,7 +276,7 @@ export default function App() {
                     strategy={report.search_strategy}
                   />
 
-                  <h3 className="mt-6 font-serif text-base text-ink">Recommendations</h3>
+                  <h3 className="mt-6 font-serif text-base font-normal tracking-[-0.02em] text-ink">Recommendations</h3>
                   <p className="mt-1 font-sans text-xs text-subtle">
                     Ranked options from catalog search; identifiers match grounded{" "}
                     <code className="rounded bg-cream-deep px-1 font-mono text-[11px] text-ink">search_products</code>{" "}
@@ -419,7 +420,7 @@ function RecommendationCard({ rec }: { rec: ProductRecommendation }) {
   };
 
   return (
-    <article className="rounded-xl border border-ink/10 bg-white px-4 py-3.5 shadow-sm">
+    <article className="rounded-[14px] border border-ink/[0.08] bg-white px-4 py-4 shadow-[0_1px_2px_rgba(26,24,22,0.04)]">
       <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
         <h4 className="min-w-0 max-w-[min(100%,36rem)] font-serif text-[1.0625rem] leading-snug tracking-tight text-ink">
           <span className="mr-1.5 inline font-sans text-xs font-medium tabular-nums text-subtle">{rec.rank}.</span>
