@@ -33,8 +33,14 @@ The key differentiator is **multi-step reasoning**. A good agent doesn't just fo
 # Copy env and fill in your keys (provided separately)
 cp .env.example .env
 
-# Install dependencies
+# Python deps (CLI agent)
 uv sync
+
+# Optional: web UI API (FastAPI + uvicorn)
+uv sync --extra web
+
+# Optional: linters / pytest
+uv sync --extra dev --extra web
 ```
 
 ### Verify Setup
@@ -134,6 +140,20 @@ uv run material-agent --trace "Check whether a product like 'Quartz Countertop -
 
 The CLI prints a JSON report: executive summary, constraints, search strategy, ranked recommendations (with `product_id` and evidence-backed `reasoning`), and caveats. Recommendations are **grounded**: every `product_id` must come from a `search_products` tool result in that run (the agent will repair itself if the model invents IDs).
 
+### Web UI (optional)
+
+React + TypeScript + Vite + Tailwind in `web/`. Uses the same agent over **Server-Sent Events** so the interface can show live orchestration (brief analysis → tool calls → grounding).
+
+```bash
+uv sync --extra web
+# Terminal 1 — API (loads `.env` via the agent)
+uv run material-agent-api
+# Terminal 2
+cd web && npm install && npm run dev
+```
+
+Open [http://localhost:5173](http://localhost:5173). The dev server proxies `/api` → `http://127.0.0.1:8000`. Toggle **Show agent trace** for a monospace tool log.
+
 ### Approach
 
 - **Orchestration:** OpenRouter chat completions with **function calling**; the model plans multiple **narrow** SDK queries instead of one broad product search.
@@ -141,13 +161,18 @@ The CLI prints a JSON report: executive summary, constraints, search strategy, r
 - **Output:** Structured JSON (`pydantic`-validated). Each `product_id` in `recommendations` must appear in a
   `search_products` response in the same run; otherwise the agent gets an automatic **grounding repair** turn.
 - **`--trace`:** Logs each tool call to stderr for debugging.
+- **Web demo:** Two-panel UI with progressive orchestration feedback and optional trace; FastAPI + SSE in `material_agent/server.py`.
 - **Async:** `AsyncAcelab` is used inside `asyncio` so the agent never blocks an event loop with the sync client.
+- **Domain guard:** Before LLM or Acelab calls, the brief is checked with simple keyword heuristics—including a **software/tutorial** bucket (e.g. React, TypeScript, Docker, CSS layout)—with **whole-word** checks so terms like “reactive” in coatings do not false-trigger. If an off-topic signal matches and no building-material hint does, the run stops without tools; valid AEC briefs stay permissive even when they mention tech companies or “React” in a renovation context.
+
+### Domain guardrail
+
+Prompts that look **clearly unrelated** to architectural or interior building materials are stopped **before** OpenRouter or the Acelab API run: you get a normal JSON report with an explanation and **no** `search_products` calls. This is heuristic-only (keyword lists), including dev/tutorial phrasing; briefs that include normal spatial or material cues (flooring, walls, renovation, LEED, etc.) still run even alongside “office,” “software,” or “React” in a building context.
 
 ### Future improvements
 
 - Explicit **budget / performance rubric** in the schema (e.g. cost band, slip resistance, VOC) with retrieval for each criterion.
 - **Caching** of tool results per session to cut latency and tokens.
-- **Web or TUI** for iterative refinement.
 
 ## Submission
 

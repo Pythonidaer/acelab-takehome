@@ -11,12 +11,17 @@ dependencies = [
 
 [project.scripts]
 material-agent = "material_agent.__main__:main"
+material-agent-api = "material_agent.server:main"
 
 [project.optional-dependencies]
 dev = [
     "ruff",
     "mypy",
     "pytest",
+]
+web = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
 ]
 
 [build-system]

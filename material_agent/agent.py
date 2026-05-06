@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import inspect
 import json
 import re
 import sys
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from openai import AsyncOpenAI
@@ -11,6 +13,7 @@ from pydantic import BaseModel, Field
 from acelab import AsyncAcelab
 
 from .config import OPENROUTER_BASE_URL, get_openrouter_model, require_env
+from .domain_guard import brief_appears_in_scope, out_of_scope_agent_report
 from .toolkit import TOOL_SPECS, dispatch_tool
 
 SYSTEM_PROMPT = """You are an architect-facing materials consultant with access to Acelab search tools.
@@ -51,6 +54,25 @@ Rules:
 - Do not fabricate certifications or brands not supported by tool outputs.
 - reasoning must cite concrete signals (e.g. score, taxonomy, material notes) when available.
 """
+
+TOOL_PROGRESS_LABELS: dict[str, str] = {
+    "search_products": "Searching products",
+    "search_materials": "Searching materials",
+    "search_certifications": "Checking certifications",
+    "search_companies": "Comparing manufacturers",
+    "classify_taxonomy": "Classifying taxonomy",
+    "deduplicate_product": "Checking catalog for duplicates",
+}
+
+ProgressCallback = Callable[[dict[str, Any]], Awaitable[None] | None]
+
+
+async def _emit(on_event: ProgressCallback | None, payload: dict[str, Any]) -> None:
+    if on_event is None:
+        return
+    out = on_event(payload)
+    if inspect.isawaitable(out):
+        await out
 
 
 class ProductRecommendation(BaseModel):
@@ -132,7 +154,7 @@ def _grounding_user_message(issues: list[str], seen: dict[str, dict[str, Any]]) 
     )
 
 
-def _trace_tool_event(verbose: bool, name: str, args_preview: str, payload: dict[str, Any]) -> None:
+def _trace_print(verbose: bool, name: str, args_preview: str, payload: dict[str, Any]) -> None:
     if not verbose:
         return
     if name == "search_products":
@@ -168,13 +190,106 @@ def _trace_tool_event(verbose: bool, name: str, args_preview: str, payload: dict
     print(f"[trace] {name}({args_preview})", file=sys.stderr)
 
 
+def _format_trace_line(name: str, args_preview: str, payload: dict[str, Any]) -> str:
+    ap = args_preview[:180]
+    if name == "search_products":
+        rows = payload.get("results") or []
+        top = [r.get("manufacturer_product_name", "?") for r in rows[:4]]
+        return (
+            f"search_products({ap}) → {len(rows)} rows · " f"{', '.join(top)}"
+        )
+    if name in ("search_materials", "search_certifications", "search_companies"):
+        n = len(payload.get("results") or [])
+        return f"{name}({ap}) → {n} rows"
+    if name == "classify_taxonomy":
+        st = payload.get("match_status")
+        return f"classify_taxonomy({ap}) → {st}"
+    if name == "deduplicate_product":
+        cands = payload.get("candidates") or []
+        n = len(cands)
+        if cands and isinstance(cands[0], dict) and "is_likely_duplicate" in cands[0]:
+            likely = sum(1 for x in cands if x.get("is_likely_duplicate"))
+            return f"deduplicate_product({ap}) → {n} candidates · likely dupes: {likely}"
+        return f"deduplicate_product({ap}) → {n} candidates"
+    if payload.get("error"):
+        return f"{name}({ap}) → error: {payload['error']}"
+    return f"{name}({ap})"
+
+
+def _tool_summary(name: str, payload: dict[str, Any]) -> str:
+    if payload.get("error"):
+        return str(payload["error"])
+    if name == "search_products":
+        rows = payload.get("results") or []
+        top = [str(r.get("manufacturer_product_name") or "?") for r in rows[:3]]
+        return f"{len(rows)} matches · {', '.join(top)}{'…' if len(rows) > 3 else ''}"
+    if name in ("search_materials", "search_certifications", "search_companies"):
+        n = len(payload.get("results") or [])
+        return f"{n} semantic matches"
+    if name == "classify_taxonomy":
+        return f"Taxonomy status: {payload.get('match_status', '?')}"
+    if name == "deduplicate_product":
+        cands = payload.get("candidates") or []
+        if cands and isinstance(cands[0], dict) and "is_likely_duplicate" in cands[0]:
+            likely = sum(1 for x in cands if x.get("is_likely_duplicate"))
+            return f"{len(cands)} candidates · {likely} likely duplicate(s)"
+        return f"{len(cands)} similar catalog entries"
+    return "Done"
+
+
+async def _tool_completed(
+    *,
+    verbose: bool,
+    on_event: ProgressCallback | None,
+    show_trace: bool,
+    trace_capture: list[str] | None,
+    name: str,
+    args_preview: str,
+    payload: dict[str, Any],
+) -> None:
+    _trace_print(verbose, name, args_preview, payload)
+    line = _format_trace_line(name, args_preview, payload)
+    if trace_capture is not None:
+        trace_capture.append(line)
+    if on_event is not None:
+        await _emit(
+            on_event,
+            {
+                "kind": "tool",
+                "tool": name,
+                "label": TOOL_PROGRESS_LABELS.get(name, name),
+                "args_preview": args_preview[:200],
+                "summary": _tool_summary(name, payload),
+            },
+        )
+    if show_trace and on_event is not None:
+        await _emit(
+            on_event,
+            {
+                "kind": "trace",
+                "message": line,
+            },
+        )
+
+
 async def run_agent(
     user_prompt: str,
     *,
     max_tool_rounds: int = 16,
     max_grounding_repairs: int = 4,
     verbose: bool = False,
+    on_event: ProgressCallback | None = None,
+    stream_trace: bool = False,
+    trace_capture: list[str] | None = None,
 ) -> AgentReport:
+    # Block obvious off-domain prompts before any LLM/SDK work (saves tokens + avoids nonsense results).
+    if not brief_appears_in_scope(user_prompt):
+        await _emit(
+            on_event,
+            {"kind": "step", "id": "domain_guard", "label": "Validating brief scope"},
+        )
+        return out_of_scope_agent_report()
+
     openrouter_key = require_env("OPENROUTER_API_KEY")
     acelab_key = require_env("ACELAB_API_KEY")
     acelab_base = require_env("ACELAB_BASE_URL")
@@ -197,8 +312,19 @@ async def run_agent(
     seen_products: dict[str, dict[str, Any]] = {}
 
     async with AsyncAcelab(api_key=acelab_key, base_url=acelab_base) as acelab:
+        await _emit(
+            on_event,
+            {"kind": "step", "id": "analyzing_brief", "label": "Analyzing brief"},
+        )
         for _repair in range(max_grounding_repairs + 1):
+            emit_planning_step = True
             for _ in range(max_tool_rounds):
+                if emit_planning_step:
+                    await _emit(
+                        on_event,
+                        {"kind": "step", "id": "agent_reasoning", "label": "Planning & tool orchestration"},
+                    )
+                    emit_planning_step = False
                 completion = await llm.chat.completions.create(
                     model=model,
                     messages=messages,
@@ -229,7 +355,15 @@ async def run_agent(
                         if name == "search_products":
                             _merge_seen_products(seen_products, result)
                         args_preview = (tc.function.arguments or "")[:200].replace("\n", " ")
-                        _trace_tool_event(verbose, name, args_preview, result)
+                        await _tool_completed(
+                            verbose=verbose,
+                            on_event=on_event,
+                            show_trace=stream_trace,
+                            trace_capture=trace_capture,
+                            name=name,
+                            args_preview=args_preview,
+                            payload=result,
+                        )
                         messages.append(
                             {
                                 "role": "tool",
@@ -237,6 +371,7 @@ async def run_agent(
                                 "content": json.dumps(result, default=str),
                             }
                         )
+                    emit_planning_step = True
                     continue
 
                 text = msg.content or ""
@@ -255,6 +390,10 @@ async def run_agent(
                 try:
                     report = _parse_report(text)
                 except Exception:
+                    await _emit(
+                        on_event,
+                        {"kind": "step", "id": "format_json", "label": "Structuring final report"},
+                    )
                     messages.append(
                         {
                             "role": "user",
@@ -280,10 +419,33 @@ async def run_agent(
 
                 bad = _grounding_issues(report, seen_products)
                 if not bad:
+                    await _emit(
+                        on_event,
+                        {"kind": "step", "id": "grounding", "label": "Grounding recommendations"},
+                    )
                     return report
 
                 if verbose:
                     print(f"[trace] grounding repair ({bad[:5]}{'...' if len(bad) > 5 else ''})", file=sys.stderr)
+                await _emit(
+                    on_event,
+                    {
+                        "kind": "step",
+                        "id": "grounding_repair",
+                        "label": "Aligning recommendations with catalog search results",
+                    },
+                )
+                gr_line = f"grounding repair · invalid product_ids: {bad[:8]!s}"
+                if trace_capture is not None:
+                    trace_capture.append(gr_line)
+                if stream_trace and on_event is not None:
+                    await _emit(
+                        on_event,
+                        {
+                            "kind": "trace",
+                            "message": gr_line,
+                        },
+                    )
                 messages.append({"role": "user", "content": _grounding_user_message(bad, seen_products)})
                 break
             else:

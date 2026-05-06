@@ -114,7 +114,7 @@ TOOL_SPECS: list[dict[str, Any]] = [
                     "name": {"type": "string", "description": "Manufacturer product name as the user described it."},
                     "supplier": {
                         "type": "string",
-                        "description": "Supplier or brand name if known; omit if unknown.",
+                        "description": "Supplier or brand if known; leave empty if unknown (API will use a placeholder).",
                     },
                     "description": {"type": "string", "description": "Optional product description for better matching."},
                     "attributes": {
@@ -210,7 +210,9 @@ async def dispatch_tool(
 
     if name == "deduplicate_product":
         product_name = args["name"]
-        supplier = str(args.get("supplier") or "")
+        supplier_raw = str(args.get("supplier") or "").strip()
+        # Acelab deduplication API requires non-empty supplier; use a neutral placeholder when unknown.
+        supplier_for_api = supplier_raw if supplier_raw else "Unknown"
         description = args.get("description")
         if description is not None:
             description = str(description)
@@ -222,14 +224,14 @@ async def dispatch_tool(
             attributes = {str(k): str(v) for k, v in attrs_raw.items()}
         r = await acelab.deduplicate(
             name=product_name,
-            supplier=supplier,
+            supplier=supplier_for_api,
             description=description,
             attributes=attributes,
         )
         return {
             "query": {
                 "name": product_name,
-                "supplier": supplier if supplier else None,
+                "supplier": supplier_raw or None,
                 "description": description,
                 "attributes": attributes,
             },
