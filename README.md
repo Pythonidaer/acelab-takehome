@@ -1,184 +1,166 @@
-# Acelab Take-Home: Material Recommendation Agent
+# Material Recommendation Agent
 
-Acelab is building the definitive platform for material intelligence in the built environment. Architects and designers use our platform to find, evaluate, and select building materials across thousands of products.
+**Submission — Jonathan Hammond.** This repository is my solution to Acelab’s **material recommendation agent** take-home: a Python backend using an LLM for orchestration, **real SDK calls** (no mocks), **multi-step decomposition** instead of one-shot search, and **structured ranked output** with reasoning.
 
-We're giving you access to our search API via a Python SDK. Your task is to build an AI agent that helps architects find the right materials for their projects.
+## Table of contents
 
-## The Challenge
+**How to run**
 
-Build an agent that takes a natural language description of a project or space and returns ranked material recommendations with reasoning.
+- [Prerequisites](#prerequisites)
+- [Install](#install)
+- [Quick start](#quick-start)
+- [CLI reference](#cli-reference)
 
-**Example input:**
-> "High-traffic hospital corridor that needs to meet infection control standards,
-> LEED Silver minimum, and a calming aesthetic. Budget is mid-range."
+**SDK & integration**
 
-**Your agent should:**
+- [Acelab SDK](#acelab-sdk) — method overview; [Sync vs async](#sync-vs-async)
 
-1. Analyze the request and identify what to search for — material types, performance criteria, certifications, manufacturers, etc.
-2. Make multiple, targeted calls to the Acelab SDK to gather relevant products, materials, and certifications
-3. Synthesize results into ranked recommendations that explain *why* each product fits — not just a list of search results
+**Challenge write-up**
 
-The key differentiator is **multi-step reasoning**. A good agent doesn't just forward the user's input as a single search query. It decomposes, searches across multiple dimensions, cross-references, and synthesizes.
+- [Approach and key design decisions](#approach-and-key-design-decisions)
+- [Development process](#development-process)
+- [Domain guardrail](#domain-guardrail)
+- [What I would improve with more time](#what-i-would-improve-with-more-time)
 
-## Setup
+---
 
-### Prerequisites
+An LLM-orchestrated assistant that reads a natural-language **architectural or interior** project brief and returns **ranked product recommendations with reasoning**, using the vendored **Acelab Python SDK** (real API calls, no mocks) and **OpenRouter** for chat + **function calling**. The agent plans **multiple targeted SDK lookups**—products, materials, certifications, manufacturers, taxonomy, and optional duplicate checks—rather than stuffing the entire brief into a single catalog search.
 
-- Python 3.12+
-- [uv](https://docs.astral.sh/uv/) (Python package manager)
+Each run returns **validated JSON** (Pydantic): executive summary, constraints, search narrative, ranked rows with `reasoning`, and **caveats**. Recommended **`product_id` values must come from `search_products` hits in that same run**; if the model invents or miscopies IDs, a **grounding repair** loop injects feedback and retries (`material_agent/agent.py`). A **domain heuristic** rejects clearly off-topic prompts before any OpenRouter or Acelab work (`material_agent/domain_guard.py`).
 
-### Install
+**Interfaces:** **`material-agent` CLI** (primary), optional **React + Vite** UI with **FastAPI SSE** (`material_agent/server.py`, `web/`).
+
+---
+
+## Prerequisites
+
+- Python **3.12+**
+- [uv](https://docs.astral.sh/uv/) for dependencies
+- **Optional — web UI:** Node.js **18+** and npm
+
+## Install
 
 ```bash
-# Copy env and fill in your keys (provided separately)
 cp .env.example .env
+# Set ACELAB_API_KEY, ACELAB_BASE_URL, OPENROUTER_API_KEY (optional: OPENROUTER_MODEL — see material_agent/config.py)
 
-# Python deps (CLI agent)
 uv sync
-
-# Optional: web UI API (FastAPI + uvicorn)
+# Optional FastAPI backend for the web UI:
 uv sync --extra web
-
-# Optional: linters / pytest
+# Optional dev tools:
 uv sync --extra dev --extra web
 ```
 
-### Verify Setup
+## Quick start
 
-Run the example script to confirm your API connection:
+1. Configure `.env` as above (`OPENROUTER_MODEL` defaults to `openai/gpt-4o-mini` on OpenRouter unless set).
+2. *(Optional)* Check Acelab connectivity:  
+   `uv run python examples/basic_usage.py`
+3. Run the agent (JSON on **stdout**):  
+   `uv run material-agent "High-traffic hospital corridor, infection control, LEED Silver, calming aesthetic, mid-range budget."`
+4. Inspect tool/SDK activity (**stderr**):  
+   `uv run material-agent --trace "your brief"`
 
-```bash
-uv run python examples/basic_usage.py
-```
-
-You should see search results printed for each endpoint. If you get auth errors, double-check your `.env` values.
-
-## Acelab SDK
-
-The `acelab/` directory contains our Python SDK. **Do not modify it.**
-
-### Available Methods
-
-| Method | Description |
-|---|---|
-| `client.search(query)` | Semantic search across the full product catalog |
-| `client.materials.search(query)` | Search material types (e.g., "vinyl", "quartz") |
-| `client.certifications.search(query)` | Search certifications (e.g., "LEED", "FSC") |
-| `client.companies.search(query)` | Search manufacturers and brands |
-| `client.taxonomy.search(category)` | Classify into product taxonomy |
-| `client.deduplicate(name=, supplier=)` | Find duplicate products |
-
-All search methods return results with `similarity_score` (0.0–1.0) and support `limit` and `offset` params. See `examples/basic_usage.py` for full usage of every method.
-
-### Sync vs Async
-
-```python
-from acelab import Acelab, AsyncAcelab
-
-# Synchronous
-client = Acelab(api_key="...", base_url="...")
-results = client.search("porcelain tile")
-
-# Asynchronous (use as context manager)
-async with AsyncAcelab(api_key="...", base_url="...") as client:
-    results = await client.search("porcelain tile")
-```
-
-## Requirements
-
-- Python backend using an LLM for orchestration and reasoning
-- Must use the Acelab SDK to query real data (don't mock it)
-- The agent must make multiple API calls — decompose the problem, don't just pipe input to a single search
-- An OpenRouter API key is provided — use any model available there
-
-### Interface
-
-Pick one or more — your choice:
-- Chat-style web UI
-- Form-based web app
-- CLI or TUI
-- Async PDF report
-- Something else entirely
-
-We care more about the agent logic than the interface polish.
-
-## Evaluation
-
-| Criteria | What we're looking for |
-|---|---|
-| **Agent design** | How you decompose a vague request into structured API calls |
-| **LLM integration** | Effective use of tool calling, structured output, or prompting |
-| **Code quality** | Clean, well-structured, easy to run |
-| **Product thinking** | Are the recommendations actually useful to an architect? |
-| **Documentation** | Can we clone it and run it in under 2 minutes? |
-
-**What we're NOT evaluating:** UI polish, test coverage (though it's a plus), specific framework choices.
-
-## Time Budget
-
-5–10 hours. We'd rather see a focused, working system than a polished but incomplete one. Scope ruthlessly.
-
-## Using AI
-
-We're an AI-native company. We expect you to use AI tools in your work — Claude Code, Cursor, ChatGPT, whatever makes you most productive. Using AI well is a skill we value, not something to hide.
-
-## Solution: material recommendation agent
-
-### How to run
-
-Prerequisites: copy `.env.example` to `.env` and fill `ACELAB_API_KEY`, `ACELAB_BASE_URL`, and `OPENROUTER_API_KEY`. Optionally set `OPENROUTER_MODEL` (defaults to `openai/gpt-4o-mini` on [OpenRouter](https://openrouter.ai/)).
+**Optional web UI** — two terminals:
 
 ```bash
-uv sync
-uv run examples/basic_usage.py   # optional: sanity-check Acelab connectivity
-uv run material-agent "High-traffic hospital corridor, infection control, LEED Silver, calming aesthetic, mid-range budget."
-uv run material-agent --trace "…"   # log each SDK tool call on stderr; JSON still on stdout
-# Deduplication + recommendations (uses `deduplicate_product` + `search_products`; IDs stay search-grounded):
-uv run material-agent --trace "Check whether a product like 'Quartz Countertop - White' from Caesarstone may already exist in the catalog, then recommend similar quartz surfaces for a healthcare reception desk that needs durability, cleanability, and a bright neutral aesthetic."
-# or: uv run python -m material_agent <<< "your multi-line brief"
-```
-
-The CLI prints a JSON report: executive summary, constraints, search strategy, ranked recommendations (with `product_id` and evidence-backed `reasoning`), and caveats. Recommendations are **grounded**: every `product_id` must come from a `search_products` tool result in that run (the agent will repair itself if the model invents IDs).
-
-### Web UI (optional)
-
-React + TypeScript + Vite + Tailwind in `web/`. Uses the same agent over **Server-Sent Events** so the interface can show live orchestration (brief analysis → tool calls → grounding).
-
-```bash
-uv sync --extra web
-# Terminal 1 — API (loads `.env` via the agent)
+# Terminal 1
 uv run material-agent-api
+
 # Terminal 2
 cd web && npm install && npm run dev
 ```
 
-Open [http://localhost:5173](http://localhost:5173). The dev server proxies `/api` → `http://127.0.0.1:8000`. Toggle **Show agent trace** for a monospace tool log.
+Open [http://localhost:5173](http://localhost:5173). The Vite dev server proxies `/api` to `http://127.0.0.1:8000`. Use **Show agent trace** in the UI for a combined tool log after the run completes.
 
-### Approach
+---
 
-- **Orchestration:** OpenRouter chat completions with **function calling**; the model plans multiple **narrow** SDK queries instead of one broad product search.
-- **Tools (real `AsyncAcelab` calls):** `search_products`, `search_materials`, `search_certifications`, `search_companies`, `classify_taxonomy`, and `deduplicate_product` (catalog duplicate check — evidence only; ranking IDs still come from `search_products`).
-- **Output:** Structured JSON (`pydantic`-validated). Each `product_id` in `recommendations` must appear in a
-  `search_products` response in the same run; otherwise the agent gets an automatic **grounding repair** turn.
-- **`--trace`:** Logs each tool call to stderr for debugging.
-- **Web demo:** Two-panel UI with progressive orchestration feedback and optional trace; FastAPI + SSE in `material_agent/server.py`.
-- **Async:** `AsyncAcelab` is used inside `asyncio` so the agent never blocks an event loop with the sync client.
-- **Domain guard:** Before LLM or Acelab calls, the brief is checked with simple keyword heuristics—including a **software/tutorial** bucket (e.g. React, TypeScript, Docker, CSS layout)—with **whole-word** checks so terms like “reactive” in coatings do not false-trigger. If an off-topic signal matches and no building-material hint does, the run stops without tools; valid AEC briefs stay permissive even when they mention tech companies or “React” in a renovation context.
+## CLI reference
 
-### Domain guardrail
+Environment variables load via `python-dotenv` in `material_agent/config.py`.
 
-Prompts that look **clearly unrelated** to architectural or interior building materials are stopped **before** OpenRouter or the Acelab API run: you get a normal JSON report with an explanation and **no** `search_products` calls. This is heuristic-only (keyword lists), including dev/tutorial phrasing; briefs that include normal spatial or material cues (flooring, walls, renovation, LEED, etc.) still run even alongside “office,” “software,” or “React” in a building context.
+```bash
+uv run python examples/basic_usage.py
 
-### Future improvements
+uv run material-agent "Single-line brief."
 
-- Explicit **budget / performance rubric** in the schema (e.g. cost band, slip resistance, VOC) with retrieval for each criterion.
-- **Caching** of tool results per session to cut latency and tokens.
+uv run material-agent --trace "…"
 
-## Submission
+# Dedup workflow (evidence-only) plus grounded recommendations:
+uv run material-agent --trace "Check whether a product like 'Quartz Countertop - White' from Caesarstone may already exist in the catalog, then recommend similar quartz surfaces for a healthcare reception desk that needs durability, cleanability, and a bright neutral aesthetic."
 
-Push your work to this repo. Work however you're comfortable — branching, committing to main, whatever. We'll review the final state of the repo and your git history.
+# Multi-line stdin (bash/zsh):
+uv run python -m material_agent <<< $'First line.\nSecond line.'
+```
 
-Please include a short section (in this README or a separate doc) covering:
-- How to run your solution
-- Your approach and key design decisions
-- What you'd improve with more time
+Dedup results from `deduplicate_product` inform narrative only; **`product_id` in rankings still must come from `search_products`** in that run.
+
+---
+
+## Acelab SDK
+
+The **`acelab/`** directory ships the upstream SDK; **`material_agent`** only calls into it (no edits under `acelab/`).
+
+| Method | Role |
+|---|---|
+| `client.search(query)` | Product catalog semantic search |
+| `client.materials.search(query)` | Material types |
+| `client.certifications.search(query)` | Certifications |
+| `client.companies.search(query)` | Brands / manufacturers |
+| `client.taxonomy.search(...)` | Taxonomy classification |
+| `client.deduplicate(name=..., supplier=...)` | Duplicate / near-match candidates |
+
+Search-style methods support `similarity_score` and `limit` / `offset`. See **`examples/basic_usage.py`** for a full pass over every endpoint.
+
+### Sync vs async
+
+The example script uses the synchronous **`Acelab`** client. The agent runtime uses **`AsyncAcelab`** inside `asyncio` so waits don’t block an event loop.
+
+```python
+from acelab import Acelab, AsyncAcelab
+
+client = Acelab(api_key="...", base_url="...")
+results = client.search("porcelain tile")
+
+async with AsyncAcelab(api_key="...", base_url="...") as client:
+    results = await client.search("porcelain tile")
+```
+
+---
+
+## Approach and key design decisions
+
+Focused on **multi-step retrieval and synthesis**, not a large application surface.
+
+- **CLI first** — Easiest path to run, diff, or grade the agent; JSON in / JSON out.
+- **Small web layer** — Form + streaming status for demos; same `run_agent` as the CLI.
+- **Tool orchestration** — OpenRouter function calling drives **`search_products`**, **`search_materials`**, **`search_certifications`**, **`search_companies`**, **`classify_taxonomy`**, and **`deduplicate_product`** (`material_agent/toolkit.py` → real `AsyncAcelab` calls).
+- **Decomposed queries** — Briefs are broken into several narrow searches (space type, performance, sustainability, aesthetics, named brands) instead of one vague catalog query.
+- **Grounded IDs** — Final recommendations only reference product IDs observed in **`search_products`** tool results for that run; otherwise a **repair** message feeds the catalog snapshot back into the model.
+- **`--trace` / UI trace** — Makes the tool loop legible (`material_agent/agent.py`; SSE aggregates trace lines into the **complete** event when enabled).
+- **Structured output** — Pydantic report schema for predictable parsing downstream.
+
+---
+
+## Development process
+
+Scope, task breakdown, and early prompting were iterated in **ChatGPT**. Core Python (agent, tools, grounding, SSE API) was implemented in **Cursor** with repo norms in **`.cursorrules`**. The optional UI shell came from **ChatGPT** prompting plus **[Lovable](https://lovable.dev/)**, then wired to this codebase’s SSE stream and payload shapes.
+
+---
+
+## Domain guardrail
+
+Clearly **non-architectural** prompts (consumer tech tropes, dev tutorials without building context, etc.) short-circuit to a polite JSON-shaped report — **no** OpenRouter and **no** `search_products`. Logic is keyword heuristics with **whole-word** checks for ambiguous tokens (for example **`react`** does not trip on **`reactive`** in coatings). If the brief carries normal **space/material/spec** cues — floors, LEED, corridors, renovations, coatings, etc. — it stays eligible even beside words like **office** or **software**.
+
+---
+
+## What I would improve with more time
+
+- Stronger **intent routing** instead of purely heuristic rejection (including an explicit **needs clarification** path).
+- **Clarifying questions** before searching when constraints are vague.
+- A published **ranking rubric** (cost, durability, maintenance, sustainability, aesthetics, availability, risk) backed by retrieval per axis.
+- **Richer citations** tying each recommendation to specific SDK fields.
+- Better **supplier / near-duplicate** collapse in ranked lists.
+- **Session caching** for repeated tool calls.
+- Hardening **SSE / empty-state / error** paths in the UI.
+- **Tests** around grounding, domain guard, JSON parsing, and `dispatch_tool`.
